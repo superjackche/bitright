@@ -37,52 +37,6 @@ $(document).ready(function () {
     //     }
     // });
 
-    $.ajax({
-        url: "/chain",
-        type: 'GET',
-        success: function (response) {
-            let chain = response["chain"];
-            console.log(response)
-
-            let dataSet = []
-
-            for (let i = 0; i < chain.length; i++) {
-
-                let transactions = chain[i]["data"]
-                let index = chain[i]["index"]
-                let prev_hash = chain[i]["previous_hash"]
-                let nonce = chain[i]["nonce"]
-                let time = chain[i]["time_string"]
-
-                let data = [index, transactions.length, prev_hash, nonce, time];
-
-                console.log(data);
-
-                dataSet.push(data);
-
-                $('#block_select').append($('<option>', { value: index, text: 'Block ' + index }));
-            }
-
-            let chain_table = $('#chain_table').DataTable({
-                data: dataSet,
-                columns: [
-                    { title: "Index" },
-                    { title: "Number of Transactions" },
-                    { title: "Previous Hash" },
-                    { title: "Nonce" },
-                    { title: "Timestamp" }
-                ]
-            });
-
-            $('#chain_table tbody').on('click', 'tr', function () {
-                let data = chain_table.row(this).data();
-                $("#block_select").val(data[0]).trigger('change');
-            });
-        },
-        error: function (error) {
-            console.log(error);
-        }
-    });
 
 
     // $("#block_select").change(function () {
@@ -292,7 +246,7 @@ function uploadFile(action) {
                         "<b>" + "Timestamp: " + "</b>" + currentBlock.timestamp + "<br/>" +
                         "<b>" + "Owner Public Key: " + "</b>" + '<a href="' + window.URL.createObjectURL(pubkeyBlob) + '" download="pubkey-'+ currentBlock.transaction.media +'.asc" title="Owner Public Key"><i class="fas fa-key"></i></a>' + "<br/>" +
                         "<b>" + "Original Filename: " + "</b>" + currentBlock.transaction.filename + "<br/>" +
-                        "<b>" + "Original File: " + "</b>" + '<a href="' + window.URL.createObjectURL(pubkeyBlob) + '" download="'+ currentBlock.transaction.filename +'" title="Original File"><i class="fas fa-file-download"></i></a>' + "<br/>"
+                        "<b>" + "Original File: " + "</b>" + '<a href="/uploads/' + currentBlock.transaction.media + '" download="'+ currentBlock.transaction.filename +'" title="Original File"><i class="fas fa-file-download"></i></a>' + "<br/>"
                     );
 
                     let preview = "";
@@ -324,7 +278,7 @@ function uploadFile(action) {
         } else if(xhr.readyState === 4 && xhr.status != 200){
             //alert("Upload Failed");
             new Noty({
-                text: "Upload Failed",
+                text: "Upload failed; check server log",
                 theme: 'metroui',
                 type: 'error',
                 timeout: 3000,

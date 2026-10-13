@@ -1,0 +1,7 @@
+{
+  "host": "127.0.0.1",
+  "port": 8001,
+  "debug": false,
+  "data_dir": "outputs/runtime",
+  "audio_force_fpcalc": true
+}

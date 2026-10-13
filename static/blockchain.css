@@ -1,3 +1,4 @@
 .clickable{
   cursor: pointer;
 }
+#blockchainBody td:nth-child(5) { max-width: 240px; word-break: break-all; }

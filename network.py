@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 import os
 import hashlib
+import mimetypes
 from flask import Flask, request, render_template, jsonify, redirect, send_from_directory, make_response
-from blockchain import Blockchain
-import pickle
+from blockchain import Blockchain, Block
+import json
 
-UPLOAD_FOLDER = 'uploads'
-TMP_FOLDER = 'tmp'
+from settings import CONFIG, UPLOAD_FOLDER, TMP_FOLDER, CHAIN_FILE
+from acoustid import FingerprintGenerationError
 
 app =  Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -16,16 +17,15 @@ app.config['TMP_FOLDER'] = TMP_FOLDER
 
 blockchain = Blockchain()
 
-if os.path.exists('./blockchain/chain.pkl'):
-	with open('./blockchain/chain.pkl', 'rb') as input:
-		blockchain.chain = pickle.load(input)
+if os.path.exists(CHAIN_FILE):
+	with open(CHAIN_FILE, encoding='utf-8') as source:
+		blockchain.chain = [Block.from_dict(row) for row in json.load(source)]
 
-if not os.path.exists('./blockchain'):
-	os.mkdir('blockchain')
-if not os.path.exists('./uploads'):
-	os.mkdir('uploads')
-if not os.path.exists('./tmp'):
-	os.mkdir('tmp')
+for directory in (os.path.dirname(CHAIN_FILE), UPLOAD_FOLDER, TMP_FOLDER):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+if not blockchain.check_integrity():
+    raise ValueError("Stored blockchain failed integrity verification")
 
 @app.route('/')
 def index():
@@ -45,14 +45,12 @@ def faq_page():
 
 @app.route('/uploads/<path:filename>')
 def custom_static(filename):
-    print(filename)
-    temp = filename.split('.')
-    if len(temp) > 1:
-        response = make_response(send_from_directory('./uploads/', temp[0]))
-        response.headers['Content-Type'] = 'text/html'
-        return response
-    else:
-        return send_from_directory('./uploads/', temp[0])
+    media = filename.split('.')[0]
+    original = next((b.transaction['filename'] for b in blockchain.chain
+                     if b.transaction['media'] == media), '')
+    response = make_response(send_from_directory(UPLOAD_FOLDER, media))
+    response.headers['Content-Type'] = mimetypes.guess_type(original)[0] or 'application/octet-stream'
+    return response
 
 
 # @app.route('/new_transaction', methods=['POST'])
@@ -74,6 +72,8 @@ def custom_static(filename):
 @app.route('/mine', methods=['GET'])
 def mine_unconfirmed_transactions():
 	result = blockchain.mine()
+	if result is None:
+		return jsonify({'ok': False, 'message': 'No valid pending transaction'}), 400
 	response = {'block': result.__dict__}
 
 	return jsonify(response), 200
@@ -99,18 +99,15 @@ def get_chain():
 # @app.route('/reset')
 # def reset():
 # 	global blockchain
-	
+
 # 	blockchain = Blockchain()
 
 # 	return redirect('/')
 
-# @app.route('/integrity', methods=['GET'])
-# def integrityn():
-# 	integrity = blockchain.check_integrity();
+@app.route('/integrity', methods=['GET'])
+def integrity():
+    return jsonify({'integrity': blockchain.check_integrity()}), 200
 
-# 	response = {'integrity': integrity}
-
-# 	return jsonify(response), 200
 
 @app.route('/upload', methods=['POST'])
 def upload():
@@ -121,55 +118,66 @@ def upload():
 		response = {'ok': False}
 		return jsonify(response), 500
 	file = request.files['contentFile']
-	
+
 	filename = hashlib.sha256(file.read()).hexdigest()
 	file.seek(0) #reset read pointer
 
 	action = request.form['action']
+	if action not in ('lookup', 'publish') or request.form['genre'] not in ('Text', 'Image', 'Audio'):
+		return jsonify({'ok': False, 'message': 'Invalid action or media type'}), 400
 
-	if action == "lookup":
-		#TODO search for exact and partial matches
-		print('TODO lookup')
-		file.save(os.path.join(app.config['TMP_FOLDER'], filename))
-		lookup_media = {
-            'genre': request.form['genre'],
-            'media': filename,
-        }
-		result = blockchain.lookup(lookup_media)
-		os.remove(os.path.join(app.config['TMP_FOLDER'], filename)) #remove uploaded file
+	try:
+		if action == "lookup":
+			#TODO search for exact and partial matches
+			print('TODO lookup')
+			file.save(os.path.join(app.config['TMP_FOLDER'], filename))
+			lookup_media = {
+	            'genre': request.form['genre'],
+	            'media': filename,
+	        }
+			result = blockchain.lookup(lookup_media)
+			os.remove(os.path.join(app.config['TMP_FOLDER'], filename)) #remove uploaded file
 
-		if result is None:
-			response = {'unique': True}
+			if result is None:
+				response = {'unique': True}
+				return jsonify(response), 200
+
+			response = {'unique': False, 'block': result.__dict__, 'message': 'Similar Object Detected'}
+
 			return jsonify(response), 200
-
-		response = {'unique': False, 'block': result.__dict__, 'message': 'Similar Object Detected'}
-		
-		return jsonify(response), 200
-	elif action == "publish":
-		if os.path.isfile(os.path.join(app.config['UPLOAD_FOLDER'], filename)):
-			print("Duplicate Detected")
-			response = {'unique': False, 'message':'Duplicate Detected'}
-		else:
-			file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-			#Create a new transaction
-			author = request.form['author']
-			title = request.form['title']
-			pubkey = request.form['pubkey']
-			genre = request.form['genre']
-			original_filename = file.filename
-			blockchain.new_transaction(title, original_filename, author, pubkey, genre, filename)
-			result = blockchain.mine()
-			if result == None:
-				print("FALSE")
-				os.remove(os.path.join(app.config['UPLOAD_FOLDER'], filename)) #remove uploaded file
-				response = {'unique': False, 'message':'Similar Object Detected, Input File Rejected'}
+		elif action == "publish":
+			if os.path.isfile(os.path.join(app.config['UPLOAD_FOLDER'], filename)):
+				print("Duplicate Detected")
+				response = {'unique': False, 'message':'Duplicate Detected'}
 			else:
-				print("TEST")
-				print(result)
-				response = {'unique': True, 'block': result.__dict__}
+				file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+				#Create a new transaction
+				author = request.form['author']
+				title = request.form['title']
+				pubkey = request.form['pubkey']
+				genre = request.form['genre']
+				original_filename = file.filename
+				blockchain.new_transaction(title, original_filename, author, pubkey, genre, filename)
+				result = blockchain.mine()
+				if result == None:
+					print("FALSE")
+					os.remove(os.path.join(app.config['UPLOAD_FOLDER'], filename)) #remove uploaded file
+					response = {'unique': False, 'message':'Similar Object Detected, Input File Rejected'}
+				else:
+					print("TEST")
+					print(result)
+					response = {'unique': True, 'block': result.__dict__}
 
-		return jsonify(response), 200
+			return jsonify(response), 200
+	except (IOError, OSError, ValueError, FingerprintGenerationError):
+		app.logger.exception("Media processing failed")
+		blockchain.unconfirmed_transactions = {}
+		if action == 'lookup' or not any(b.transaction['media'] == filename for b in blockchain.chain):
+			path = os.path.join(TMP_FOLDER if action == 'lookup' else UPLOAD_FOLDER, filename)
+			if os.path.exists(path):
+				os.remove(path)
+		return jsonify({'ok': False, 'message': 'Media processing failed; check server log'}), 422
 
 
-
-app.run(debug=True, port=8000)
+if __name__ == '__main__':
+    app.run(host=CONFIG['host'], port=CONFIG['port'], debug=CONFIG['debug'], threaded=False)

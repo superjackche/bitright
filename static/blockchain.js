@@ -46,7 +46,7 @@ function addRow(index, title, author, genre, previousHash, timestamp, pubkey, me
     newRow.insertCell(2).appendChild(document.createTextNode(author));
     newRow.insertCell(3).appendChild(document.createTextNode(genre));
     newRow.insertCell(4).appendChild(document.createTextNode(previousHash));
-    newRow.insertCell(5).appendChild(document.createTextNode(new Date(timestamp)));
+    newRow.insertCell(5).appendChild(document.createTextNode(new Date(timestamp * 1000).toLocaleString()));
 
     var pubkeyBlob = new Blob([pubkey], { type: 'text/plain' });
 
@@ -80,7 +80,7 @@ function showDetails(id) {
         "<b>" + "Author: " + "</b>" + currentBlock.transaction.author + "<br/>" +
         "<b>" + "Genre: " + "</b>" + currentBlock.transaction.genre + "<br/>" +
         "<span style='word-wrap: break-word;'><b>Previous Hash: " + "</b>" + currentBlock.previous_hash + "</span><br/>" +
-        "<b>" + "Timestamp: " + "</b>" + new Date(currentBlock.timestamp) + "<br/>" +
+        "<b>" + "Timestamp: " + "</b>" + new Date(currentBlock.timestamp * 1000).toLocaleString() + "<br/>" +
         "<b>" + "Owner Public Key: " + "</b>" + '<a href="' + window.URL.createObjectURL(pubkeyBlob) + '" download="pubkey-' + currentBlock.transaction.media + '.asc" title="Owner Public Key"><i class="fas fa-key"></i></a>' + "<br/>" +
         "<b>" + "Original Filename: " + "</b>" + currentBlock.transaction.filename + "<br/>" +
         "<b>" + "Original File: " + "</b>" + '<a href="/uploads/' + currentBlock.transaction.media + '" download="' + currentBlock.transaction.filename + '" title="Original File"><i class="fas fa-file-download"></i></a>' + "<br/>"

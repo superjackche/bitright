@@ -1,6 +1,6 @@
-1st Run: Run the following command in the terminal (without double quotes)
-"source ./install.sh"
-"python network.py"
-
-Subsequent Runs: Run the following command in the terminal (without double quotes)
-"source ./run.sh"
+Install Python dependencies: uv sync --locked
+Ubuntu 24.04 system packages: sudo apt-get install build-essential python3.12-dev libchromaprint-tools ffmpeg
+Start the application: uv run --locked network.py
+Run tests: uv run --locked pytest
+Configuration: config.json (or set BITRIGHT_CONFIG to an explicit JSON file)
+See README.md and docs/modernization.md for details and original-project attribution.

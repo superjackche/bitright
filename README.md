@@ -1,47 +1,80 @@
-![LOGO](./static/logo.png)
+![BitRights](./static/logo.png)
 
-Yanqi Liu (yliu136), Brandon Tan (tjiansin), George Spahn (gspahn1)
+# BitRights with Python 3 and uv
 
-github: https://github.com/liuyanqi/bitright
+A small modernization of [liuyanqi/bitright](https://github.com/liuyanqi/bitright), originally created by Yanqi Liu, Brandon Tan and George Spahn. The original Flask pages, transaction/block classes, sample media and similarity thresholds are retained. The upstream README is preserved in [docs/README.upstream.md](docs/README.upstream.md).
 
-BitRights is a proof of concept project for blockchain based digital copyright protection. Users can upload media files that they create and permanently claim ownership of their work. Anyone on the web can view the published works and verify that the author is correct. Further, it is not possible to upload a work that is too similar to one that has already been published. Audio, image, and text files are currently supported.
+This is a single-node teaching demonstration of digital-work registration and similarity lookup. It does not implement consensus, proof of work, verified authorship or externally anchored evidence.
 
-# Installing
-**1st Run: Run the following commands from inside the project directory. The installation is going to take a few minutes to install all related packages in the virtual environment** 
+## Run
+
+Tested on Ubuntu 24.04 x86_64 with Python 3.12. CPU only; no GPU is used. Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first, then run:
+
+```bash
+git clone https://github.com/superjackche/bitright.git
+cd bitright
+sudo apt-get update
+sudo apt-get install build-essential python3.12-dev libchromaprint-tools ffmpeg
+uv sync --locked
+uv run --locked network.py
 ```
-source ./install.sh
-python network.py
+
+Open `http://127.0.0.1:8001`. The Python headers are needed to build `py-tlsh`; Chromaprint provides both the native library and the `fpcalc` audio command. `bash install.sh` and `bash run.sh` wrap the two uv commands above.
+
+Browse File → choose Audio/Image/Text → Publish to register a work, or Lookup to find a similar registered work. View Blockchain lists records; Check Integrity checks the stored ledger and media bytes. The public-key field is descriptive metadata only: entering text there does not verify an identity or a signature.
+
+`uv.lock` locks dependencies; use `uv sync --locked` rather than the old pip requirements. `requirements.txt` is retained only as a historical upstream file. See [modernization notes](docs/modernization.md) for the narrowly scoped compatibility changes.
+
+## Configuration
+
+Edit `config.json`, or set `BITRIGHT_CONFIG` to the path of a separate JSON file containing all five settings:
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `host` | `127.0.0.1` | Listen on the local machine. |
+| `port` | `8001` | Web service port. |
+| `debug` | `false` | Flask debug mode. |
+| `data_dir` | `outputs/runtime` | Ledger, uploaded files and temporary files; relative paths resolve from the repository root. |
+| `audio_force_fpcalc` | `true` | Use the original experiment's audio decoding path. |
+
+The Flask development server runs one request at a time. This is a local teaching application, not a deployment with authentication or concurrent writers. The original pages also load CSS and JavaScript from public CDNs, so the browser needs internet access.
+
+## Changes
+
+- Python 3.12, Flask 3, current numerical/media dependencies, and uv project management.
+- An explicit override of image-match's obsolete scikit-image constraint. Pillow loads the image; the original Goldberg signature and distance are still used.
+- Maintained pyacoustid bindings, with `fpcalc` explicitly selected to match the original experiment's decoding path.
+- Hashes cover the full block and transaction. Integrity checks cover block links and media bytes.
+- Human-readable JSON persistence replaces pickle. Old pickle ledgers are not imported automatically; keep the original experiment in its own data directory.
+- Actual media failures return errors, instead of being presented as matches. Small fixes to legacy JavaScript, timestamps and download links preserve the original UI.
+
+No new top-level license has been invented: upstream has no repository-level license declaration. Existing notices and third-party attribution are preserved.
+
+## Verify
+
+```bash
+uv run --locked pytest
+uv run --locked python scripts/compare_versions.py
 ```
-**Subsequent Runs:**
+
+The comparison script writes `outputs/modern-comparison.json`: original versus modern hashes for three changed fields, plus nine media similarity scores. It does not run the entire Python 2 application.
+
+For the HTTP experiment, start the application with an empty ledger and run this command in a second terminal:
+
+```bash
+uv run --locked python scripts/verify_experiment.py
 ```
-source ./run.sh
-```
-**We provides some example media files in media/ folder for you to test it out**
 
-# How it Works
-Whenever a user uploads a file, a new block is added to the blockchain. This block contains the title and author of the work, a path/link to download the file, a hash of the file, the public key of the author, the timestamp, and the hash of the previous block. A hash of the file is used instead of the raw data to keep block sizes smaller. The public key of the author is included so that knowledge of the corresponding secret key allows the author to prove ownership. Like any blockchain, the hash of the previous block allows users to verify that the chain has not been tampered with.
+This writes six demonstration records and saves `outputs/experiment-results.json`. It aborts if the ledger is not empty. For another run, copy `config.json` to a local file, choose a new `data_dir` (and a different `port` if another service is running), and set the same `BITRIGHT_CONFIG` in both terminals. Existing records do not need to be deleted.
 
-# Media Comparison
-In order for a block to be considered valid, the uploaded work must not be too similar to any previous files on the chain. We use perceptual hashing to perform this comparison. A perceptual hash generates a short fingerprint for a file, such that small changes to the file only result in small changes to the fingerprint. Then if the fingerprints are too similar, it is safe to conclude that the files are too similar. To create the fingerprints, we use open source software that was made for this purpose. 
+Validated on Ubuntu 24.04 / Python 3.12:
 
-Audio comparison: [AcoustID](https://acoustid.org/)
+- 15 unit tests passed: transaction/block tampering, media bytes, JSON round trip, empty pending transactions and the full-rehash limitation.
+- 34 HTTP checks passed: publish, duplicate/similar rejection, lookup, malformed media errors, integrity and downloads; six records remained after restart with integrity intact.
+- All nine sample scores matched the separately reproduced Python 2 baseline using `fpcalc`. Original thresholds remain Text distance `< 100`, Image distance `< 0.4`, Audio similarity `> 0.9`.
 
-Image comparison: [ImageMatch](https://github.com/EdjoLabs/image-match)
+The tests use private temporary fixtures. They also demonstrate the limitation that a person who can rewrite the entire local ledger and recompute its hashes is not detected without an independent trusted anchor. Matching scores are not plagiarism probabilities.
 
-Text comparison: [TLSH](https://github.com/trendmicro/tlsh)
+## Files
 
-# Limitations
-In practice, the blockchain should not be hosted from a single server. A major advantage of using a blockchain is that there is no trusted authority for what is on the chain. In order to achieve this, we would need to add a lot of code for networking and communication between worker nodes. We also have not implemented a way of preventing adversarial mining. Proof of work could potentially be used, but there is currently no reward for successfully mining a block. If this was implemented, there would need to be transaction fees so that miners would have incentive to publish blocks.
-
-Another limitation is that as the blockchain grows, comparing new fingerprints with all of the old ones becomes increasingly computationally difficult. Perhaps probabilistically checkable proofs (PCPs) could be used to speed up the verification process. Scalability seems to be the largest hurdle if this project were to be implemented in the real world.
-
-# Vision
-The BitRights project envisions a globally recongized platform for digital rights management with built in support for royalty management and dynamic tagging of web assests, providing a fairer and more lucrative envrionment for both users and content creators. 
-
-# Challenges
-One of the key challenges with the project is determining a reasonable apporach to verifing the uniqueness of digital assests. In the project, media comparison libraries are used, however, these libraries are not without its flaws. From varying accuracies to determining a suitable "uniqueness" threshold, these libraries are far from perfect. Moreover, there is no general comparison library for all file types. Libraries only cater to a specific set of file types.
-
-# Takeaways
-- DRM is a hard problem. There is no straight forward way to solving it.
-- While blockchains might be an approach to digital intellectual property identification and protection, it may not be the best approach due to its many limitations.
-- Digital media comparison is a tricky and subjective field. A lot more research and innovation are required to achieve BitRight's vision.
+`network.py` remains the web entry point, `blockchain.py` the ledger implementation, and `acoustic/`, `image_compare/`, `text_compare/` the comparison adapters. The original vendored acoustic modules remain as upstream history; runtime imports use the maintained `pyacoustid` package. Generated results and runtime data under `outputs/` are ignored by Git. If using a custom config or data directory elsewhere, keep those local files out of commits.

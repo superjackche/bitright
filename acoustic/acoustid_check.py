@@ -1,6 +1,7 @@
 import acoustid
 import numpy as np
 import chromaprint
+from settings import CONFIG
 
 popcnt_table_8bit = [
     0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,
@@ -29,10 +30,10 @@ def accuracy(fp1, fp2):
 	return 1.0 - error / 32.0 / min(len(fp1), len(fp2))
 
 def calc_accuracy(path1, path2):
-	dur, fig = acoustid.fingerprint_file(path1)
+	dur, fig = acoustid.fingerprint_file(path1, force_fpcalc=CONFIG["audio_force_fpcalc"])
 	fp1 = chromaprint.decode_fingerprint(fig)[0]
 
-	dur, fig2 = acoustid.fingerprint_file(path2)
+	dur, fig2 = acoustid.fingerprint_file(path2, force_fpcalc=CONFIG["audio_force_fpcalc"])
 	fp2 = chromaprint.decode_fingerprint(fig2)[0]
 
 	return accuracy(fp1, fp2)
